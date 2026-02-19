@@ -1,154 +1,119 @@
-# Trying out the Developer PoR example
+# Document Notarization Workflow
 
-This template provides an end-to-end Proof-of-Reserve (PoR) example (including precompiled smart contracts). It's designed to showcase key CRE capabilities and help you get started with local simulation quickly.
+This workflow provides document hash notarization on blockchain using Chainlink CRE with HTTP triggers. It uses a custom `DocumentNotary` contract that implements the `IReceiver` interface for secure on-chain writes.
 
-Follow the steps below to run the example:
+## Key Features
 
-## 1. Initialize CRE project
+- **viem-based ABI handling**: Type-safe contract interactions with manual ABI definitions
+- **HTTP triggers**: Accept document notarization requests via authenticated endpoints
+- **Minimal contract**: Only stores essential document hashes and metadata
+- **Dual document types**: Support for both FIXED and DYNAMIC documents
 
-Start by initializing a new CRE project. This will scaffold the necessary project structure and a template workflow. Run cre init in the directory where you'd like your CRE project to live.
+FIXED documents have immutable hashes while DYNAMIC documents can be updated with new hashes to add a history of changes and have the same document ID.
 
-Example output:
+## Setup Guide
 
-```
-Project name?: my_cre_project
-✔ Custom data feed: Typescript updating on-chain data periodically using offchain API data
-✔ Workflow name?: workflow01
-```
+## 1. Update .env file
 
-## 2. Update .env file
-
-You need to add a private key to the .env file. This is specifically required if you want to simulate chain writes. For that to work the key should be valid and funded.
-If your workflow does not do any chain write then you can keep a dummy key as a private key. e.g.
+Add a funded private key to `.env` for chain write operations:
 
 ```
-CRE_ETH_PRIVATE_KEY=0000000000000000000000000000000000000000000000000000000000000001
+CRE_ETH_PRIVATE_KEY=your_private_key_here
 ```
 
-## 3. Install dependencies
-
-If `bun` is not already installed, see https://bun.com/docs/installation for installing in your environment.
+## 2. Install dependencies
 
 ```bash
-cd <workflow-name> && bun install
+cd notorization && bun install
 ```
 
-Example: For a workflow directory named `workflow01` the command would be:
+## 3. Configure RPC endpoints
 
-```bash
-cd workflow01 && bun install
+Add RPC endpoints in `project.yaml` for your target chain:
+
+```yaml
+rpcs:
+  ethereum-testnet-sepolia: "https://your-sepolia-rpc-url"
+  polygon-mainnet: "https://your-polygon-rpc-url"
 ```
 
-## 4. Configure RPC endpoints
+Supported chains: Ethereum, Base, Avalanche, Polygon, BNB Chain, Arbitrum, Optimism
 
-For local simulation to interact with a chain, you must specify RPC endpoints for the chains you interact with in the `project.yaml` file. This is required for submitting transactions and reading blockchain state.
+## 4. Deploy DocumentNotary contract
 
-Note: The following 7 chains are supported in local simulation (both testnet and mainnet variants):
+Deploy the `DocumentNotary.sol` contract with the Chainlink Forwarder address for your target network. The contract ABI is already provided in `../contracts/abi/DocumentNotary.ts`.
 
-- Ethereum (`ethereum-testnet-sepolia`, `ethereum-mainnet`)
-- Base (`ethereum-testnet-sepolia-base-1`, `ethereum-mainnet-base-1`)
-- Avalanche (`avalanche-testnet-fuji`, `avalanche-mainnet`)
-- Polygon (`polygon-testnet-amoy`, `polygon-mainnet`)
-- BNB Chain (`binance-smart-chain-testnet`, `binance-smart-chain-mainnet`)
-- Arbitrum (`ethereum-testnet-sepolia-arbitrum-1`, `ethereum-mainnet-arbitrum-1`)
-- Optimism (`ethereum-testnet-sepolia-optimism-1`, `ethereum-mainnet-optimism-1`)
+### viem ABI Approach
 
-Add your preferred RPCs under the `rpcs` section. For chain names, refer to https://github.com/smartcontractkit/chain-selectors/blob/main/selectors.yml
+The workflow uses viem's type-safe ABI handling:
 
-## 5. Deploy contracts and prepare ABIs
+- Manual ABI definitions as TypeScript constants
+- Full type inference for contract calls
+- No code generation required
+- Built-in helpers like `getNetwork()`, `bytesToHex()`
 
-### 5a. Deploy contracts
+## 5. Configure workflow
 
-Deploy the BalanceReader, MessageEmitter, ReserveManager and SimpleERC20 contracts. You can either do this on a local chain or on a testnet using tools like cast/foundry.
+Create `config.json` with your deployed contract details:
 
-For a quick start, you can also use the pre-deployed contract addresses on Ethereum Sepolia—no action required on your part if you're just trying things out.
-
-### 5b. Prepare ABIs
-
-For each contract you would like to interact with, you need to provide the ABI `.ts` file so that TypeScript can provide type safety and autocomplete for the contract methods. The format of the ABI files is very similar to regular JSON format; you just need to export it as a variable and mark it `as const`. For example:
-
-```ts
-// IERC20.ts file
-export const IERC20Abi = {
-  // ... your ABI here ...
-} as const;
+```json
+{
+  "authorizedEVMAddress": "0xYourAuthorizedAddress",
+  "contractAddress": "0xYourDocumentNotaryAddress",
+  "chainSelector": "ethereum-testnet-sepolia"
+}
 ```
 
-For a quick start, every contract used in this workflow is already provided in the `contracts` folder. You can use them as a reference.
-
-## 6. Configure workflow
-
-Configure `config.json` for the workflow
-
-- `schedule` should be set to `"0 */1 * * * *"` for every 1 minute(s) or any other cron expression you prefer, note [CRON service quotas](https://docs.chain.link/cre/service-quotas)
-- `url` should be set to existing reserves HTTP endpoint API
-- `tokenAddress` should be the SimpleERC20 contract address
-- `porAddress` should be the ReserveManager contract address
-- `proxyAddress` should be the UpdateReservesProxySimplified contract address
-- `balanceReaderAddress` should be the BalanceReader contract address
-- `messageEmitterAddress` should be the MessageEmitter contract address
-- `chainSelectorName` should be human-readable chain name of selected chain (refer to https://github.com/smartcontractkit/chain-selectors/blob/main/selectors.yml)
-- `gasLimit` should be the gas limit of chain write
-
-The config is already populated with deployed contracts in template.
-
-Note: Make sure your `workflow.yaml` file is pointing to the config.json, example:
+Update `workflow.yaml`:
 
 ```yaml
 staging-settings:
   user-workflow:
-    workflow-name: "workflow01"
+    workflow-name: "document-notary"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.json"
     secrets-path: ""
 ```
 
-## 7. Simulate the workflow
+## 6. Test the workflow
 
-Run the command from <b>project root directory</b> and pass in the path to the workflow directory.
-
-```bash
-cre workflow simulate <path-to-workflow-directory>
-```
-
-For a workflow directory named `workflow01` the exact command would be:
+### Simulate locally
 
 ```bash
-cre workflow simulate ./workflow01
+cre workflow simulate ./notorization
 ```
 
-After this you will get a set of options similar to:
+Select the HTTP trigger option and test with document data.
 
+### Test with HTTP requests
+
+Send POST requests to your deployed workflow:
+
+```json
+{
+  "documentHash": "0x1234567890abcdef...",
+  "documentType": "FIXED",
+  "notarizerAddress": "0xYourAddress...",
+  "documentId": "0xOptionalCustomId..."
+}
 ```
-🚀 Workflow simulation ready. Please select a trigger:
-1. cron-trigger@1.0.0 Trigger
-2. evm:ChainSelector:16015286601757825753@1.0.0 LogTrigger
 
-Enter your choice (1-2):
-```
+## Contract Integration
 
-You can simulate each of the following triggers types as follows
+The workflow uses viem for type-safe contract interactions:
 
-### 7a. Simulating Cron Trigger Workflows
+```typescript
+// ABI encoding with viem
+const reportData = encodeAbiParameters(
+  parseAbiParameters('bytes32, bytes32, uint8, address'),
+  [documentId, documentHash, documentType, notarizerAddress]
+);
 
-Select option 1, and the workflow should immediately execute.
-
-### 7b. Simulating Log Trigger Workflows
-
-Select option 2, and then two additional prompts will come up and you can pass in the example inputs:
-
-Transaction Hash: 0x9394cc015736e536da215c31e4f59486a8d85f4cfc3641e309bf00c34b2bf410
-Log Event Index: 0
-
-The output will look like:
-
-```
-🔗 EVM Trigger Configuration:
-Please provide the transaction hash and event index for the EVM log event.
-Enter transaction hash (0x...): 0x9394cc015736e536da215c31e4f59486a8d85f4cfc3641e309bf00c34b2bf410
-Enter event index (0-based): 0
-Fetching transaction receipt for transaction 0x9394cc015736e536da215c31e4f59486a8d85f4cfc3641e309bf00c34b2bf410...
-Found log event at index 0: contract=0x1d598672486ecB50685Da5497390571Ac4E93FDc, topics=3
-Created EVM trigger log for transaction 0x9394cc015736e536da215c31e4f59486a8d85f4cfc3641e309bf00c34b2bf410, event 0
+// Secure write flow
+const signedReport = runtime.report(reportData);
+await evmClient.writeReport({
+  contractAddress: config.contractAddress,
+  signedReport
+}).result();
 ```
