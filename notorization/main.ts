@@ -2,17 +2,17 @@ import {
   HTTPCapability,
   EVMClient,
   handler,
+  prepareReportRequest,
   type Runtime,
   type HTTPPayload,
   Runner
 } from "@chainlink/cre-sdk"
 import { encodeAbiParameters, parseAbiParameters, keccak256, encodePacked } from "viem"
-import { DocumentNotary } from "../contracts/abi/DocumentNotary"
 
 type Config = {
   authorizedEVMAddress: string
   contractAddress: string
-  chainSelector: string
+  chainSelector: keyof typeof EVMClient.SUPPORTED_CHAIN_SELECTORS
 }
 
 interface DocumentRequest {
@@ -33,7 +33,7 @@ const onHttpTrigger = async (runtime: Runtime<Config>, payload: HTTPPayload) => 
       documentType,
       notarizerAddress,
       documentId
-    } = payload.input as DocumentRequest
+    } = payload.input as unknown as DocumentRequest
 
     // Validate input
     if (!documentHash || !notarizerAddress) {
@@ -44,16 +44,15 @@ const onHttpTrigger = async (runtime: Runtime<Config>, payload: HTTPPayload) => 
     const finalDocumentId = documentId || keccak256(
       encodePacked(
         ['string', 'string', 'address', 'uint256'],
-        [documentHash, documentType, notarizerAddress, BigInt(Date.now())]
+        [documentHash, documentType, notarizerAddress as `0x${string}`, BigInt(Date.now())]
       )
     )
 
     runtime.log(`Processing document: ${finalDocumentId}`)
 
-    // Get EVM client
-    const evmClient = runtime.getCapability(EVMClient, {
-      chainSelector: runtime.config.chainSelector
-    })
+    // Instantiate EVM client with the chain selector bigint
+    const chainSelectorBigInt = EVMClient.SUPPORTED_CHAIN_SELECTORS[runtime.config.chainSelector]
+    const evmClient = new EVMClient(chainSelectorBigInt)
 
     // Prepare data for contract call
     const documentTypeEnum = documentType === 'FIXED' ? 0 : 1
@@ -72,17 +71,15 @@ const onHttpTrigger = async (runtime: Runtime<Config>, payload: HTTPPayload) => 
 
     runtime.log(`Encoded report data: ${reportData}`)
 
-    // Generate signed report
-    const signedReport = runtime.report(
-      Buffer.from(reportData.slice(2), 'hex').toString('base64')
-    )
+    // Generate signed report via consensus using the SDK helper
+    const signedReport = runtime.report(prepareReportRequest(reportData)).result()
 
     runtime.log(`Generated signed report`)
 
     // Submit the report to the consumer contract
-    await evmClient.writeReport({
-      contractAddress: runtime.config.contractAddress,
-      signedReport: signedReport
+    evmClient.writeReport(runtime, {
+      receiver: runtime.config.contractAddress,
+      report: signedReport
     }).result()
 
     runtime.log(`Document ${finalDocumentId} successfully notarized on chain`)
