@@ -1,0 +1,6 @@
+{
+    "documentHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "documentType": "FIXED",
+    "notarizerAddress": "0x0000000000000000000000000000000000000001",
+    "documentId": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+}
